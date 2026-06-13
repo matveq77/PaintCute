@@ -14,6 +14,7 @@
 #include <QMessageBox>  
 #include <memory>
 
+#include "Drawing.h"
 #include "Shape.h"
 #include "Rectangle.h"
 #include "Ellipse.h"
@@ -39,13 +40,6 @@ public:
         : QWidget(parent), mode_(Mode::None), drawingShape_(nullptr),
         selectedShapeIndex_(-1), connectionStartIndex_(-1), isDrawing_(false) {
         setFocusPolicy(Qt::StrongFocus);
-        //setStyleSheet("background-color: white;");
-    }
-
-    ~DrawingArea() {
-        for (auto& shape : shapes_) {
-            delete shape;
-        }
     }
 
     void setMode(Mode mode) {
@@ -53,24 +47,24 @@ public:
         connectionStartIndex_ = -1;
         isDrawing_ = false;
         drawingShape_.reset();
+        if (selectedShapeIndex_ >= 0) {
+            releaseMouse();
+        }
         selectedShapeIndex_ = -1;
         setMouseTracking(false);
+        setCursor(Qt::ArrowCursor);
         update();
     }
 
     void clearAll() {
-        for (auto& shape : shapes_) {
-            delete shape;
-        }
-        shapes_.clear();
-        connections_.clear();
+        drawing_.clear();
         isDrawing_ = false;
         selectedShapeIndex_ = -1;
         update();
     }
 
     void saveToFile(const QString& filename) {
-        auto result = DrawingSerializer::save(filename, shapes_, connections_);
+        auto result = DrawingSerializer::save(filename, drawing_);
         if (result == DrawingSerializer::Result::FileOpenError) {
             QMessageBox::warning(this, "Error", "Cannot create file!");
             return;
@@ -83,23 +77,20 @@ public:
     }
 
     void loadFromFile(const QString& filename) {
-        QVector<Shape*> newShapes;
-        QVector<Connection> newConnections;
-
-        auto result = DrawingSerializer::load(filename, newShapes, newConnections);
+        Drawing newDrawing;
+        auto result = DrawingSerializer::load(filename, newDrawing);
         if (result == DrawingSerializer::Result::FileOpenError) {
             QMessageBox::warning(this, "Error", "Cannot open file!");
             return;
         }
         if (result != DrawingSerializer::Result::Ok) {
-            for (auto* s : newShapes) delete s;
             QMessageBox::warning(this, "Error", "Invalid or corrupted file!");
             return;
         }
 
-        clearAll();
-        shapes_ = newShapes;
-        connections_ = newConnections;
+        drawing_ = std::move(newDrawing);
+        isDrawing_ = false;
+        selectedShapeIndex_ = -1;
         update();
         QMessageBox::information(this, "Success", "Drawing loaded!", QMessageBox::Ok);
     }
@@ -110,23 +101,25 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(rect(), Qt::white);
 
-        painter.setPen(QPen(Qt::black, 2));
-        for (int i = 0; i < shapes_.size(); ++i) {
+        auto& shapes = drawing_.shapes();
+        auto& connections = drawing_.connections();
+
+        for (int i = 0; i < shapes.size(); ++i) {
             if (mode_ == Mode::Move && i == selectedShapeIndex_) {
                 painter.setPen(QPen(Qt::blue, 2, Qt::DashLine));
             }
             else {
                 painter.setPen(QPen(Qt::black, 2));
             }
-            shapes_[i]->draw(painter);
+            shapes[i]->draw(painter);
         }
 
         painter.setPen(QPen(Qt::gray, 1.5));
-        for (const auto& conn : connections_) {
-            if (conn.getFromShapeId() >= 0 && conn.getFromShapeId() < shapes_.size() &&
-                conn.getToShapeId() >= 0 && conn.getToShapeId() < shapes_.size()) {
-                QPoint fromCenter = shapes_[conn.getFromShapeId()]->getCenter();
-                QPoint toCenter = shapes_[conn.getToShapeId()]->getCenter();
+        for (const auto& conn : connections) {
+            if (conn.getFromShapeId() >= 0 && conn.getFromShapeId() < shapes.size() &&
+                conn.getToShapeId() >= 0 && conn.getToShapeId() < shapes.size()) {
+                QPoint fromCenter = shapes[conn.getFromShapeId()]->getCenter();
+                QPoint toCenter = shapes[conn.getToShapeId()]->getCenter();
                 conn.draw(painter, fromCenter, toCenter);
             }
         }
@@ -140,7 +133,7 @@ protected:
 
         if (mode_ == Mode::DrawConnection && connectionStartIndex_ >= 0 && isDrawing_) {
             painter.setPen(QPen(Qt::blue, 1, Qt::DashLine));
-            QPoint fromCenter = shapes_[connectionStartIndex_]->getCenter();
+            QPoint fromCenter = shapes[connectionStartIndex_]->getCenter();
             painter.drawLine(fromCenter, lastMousePos_);
         }
     }
@@ -155,10 +148,12 @@ protected:
     }
 
     void mouseMoveEvent(QMouseEvent* event) override {
+        auto& shapes = drawing_.shapes();
+
         if (mode_ == Mode::Move && selectedShapeIndex_ >= 0 && (event->buttons() & Qt::LeftButton)) {
             setCursor(Qt::OpenHandCursor);
             QPoint delta = event->pos() - lastMousePos_;
-            shapes_[selectedShapeIndex_]->move(delta);
+            shapes[selectedShapeIndex_]->move(delta);
             lastMousePos_ = event->pos();
             update();
         }
@@ -196,8 +191,7 @@ protected:
     }
 
 private:
-    QVector<Shape*> shapes_;
-    QVector<Connection> connections_;
+    Drawing drawing_;
     Mode mode_;
     std::unique_ptr<Shape> drawingShape_;
     int selectedShapeIndex_;
@@ -237,7 +231,7 @@ private:
             }
             else {
                 if (shapeIndex >= 0 && shapeIndex != connectionStartIndex_) {
-                    connections_.append(Connection(connectionStartIndex_, shapeIndex));
+                    drawing_.connections().append(Connection(connectionStartIndex_, shapeIndex));
                 }
                 connectionStartIndex_ = -1;
                 isDrawing_ = false;
@@ -277,7 +271,7 @@ private:
                 drawingShape_->setEnd(pos);
                 QRect bounds = drawingShape_->getBoundingRect();
                 if (bounds.width() > 5 && bounds.height() > 5) {
-                    shapes_.append(drawingShape_.release());
+                    drawing_.shapes().append(drawingShape_.release());
                 }
                 else {
                     drawingShape_.reset();
@@ -307,11 +301,18 @@ private:
             releaseMouse();
             update();
         }
+        if (mode_ == Mode::Move && selectedShapeIndex_ >= 0) {
+            selectedShapeIndex_ = -1;
+            releaseMouse();
+            setCursor(Qt::ArrowCursor);
+            update();
+        }
     }
 
     int getShapeAtPoint(const QPoint& pos) {
-        for (int i = shapes_.size() - 1; i >= 0; --i) {
-            if (shapes_[i]->isPointInShape(pos)) {
+        auto& shapes = drawing_.shapes();
+        for (int i = shapes.size() - 1; i >= 0; --i) {
+            if (shapes[i]->isPointInShape(pos)) {
                 return i;
             }
         }
@@ -319,13 +320,16 @@ private:
     }
 
     void deleteShape(int index) {
-        if (index < 0 || index >= shapes_.size()) return;
+        auto& shapes = drawing_.shapes();
+        auto& connections = drawing_.connections();
 
-        delete shapes_[index];
-        shapes_.removeAt(index);
+        if (index < 0 || index >= shapes.size()) return;
+
+        delete shapes[index];
+        shapes.removeAt(index);
 
         QVector<Connection> validConnections;
-        for (const auto& conn : connections_) {
+        for (const auto& conn : connections) {
             int from = conn.getFromShapeId();
             int to = conn.getToShapeId();
             if (from == index || to == index) {
@@ -341,7 +345,7 @@ private:
             }
             validConnections.append(newConn);
         }
-        connections_ = validConnections;
+        connections = validConnections;
 
         update();
     }

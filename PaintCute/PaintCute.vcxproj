@@ -98,6 +98,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Connection.cpp" />
+    <ClCompile Include="Drawing.cpp" />
     <ClCompile Include="DrawingSerializer.cpp" />
     <ClCompile Include="Ellipse.cpp" />
     <QtMoc Include="main.cpp">
@@ -112,6 +113,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Connection.h" />
+    <ClInclude Include="Drawing.h" />
     <ClInclude Include="DrawingSerializer.h" />
     <ClInclude Include="Ellipse.h" />
     <ClInclude Include="Rectangle.h" />

@@ -4,6 +4,7 @@
 #include <QDataStream>
 #include "Shape.h"
 #include "Connection.h"
+#include <memory>
 
 class Drawing {
 public:
@@ -17,8 +18,8 @@ public:
 
     void clear();
 
-    QVector<Shape*>& shapes() { return shapes_; }
-    const QVector<Shape*>& shapes() const { return shapes_; }
+    QVector<std::unique_ptr<Shape>>& shapes() { return shapes_; }
+    const QVector<std::unique_ptr<Shape>>& shapes() const { return shapes_; }
 
     QVector<Connection>& connections() { return connections_; }
     const QVector<Connection>& connections() const { return connections_; }
@@ -27,6 +28,6 @@ public:
     bool deserialize(QDataStream& in);
 
 private:
-    QVector<Shape*> shapes_;
+    QVector<std::unique_ptr<Shape>> shapes_;
     QVector<Connection> connections_;
 };

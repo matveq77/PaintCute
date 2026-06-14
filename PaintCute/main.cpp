@@ -271,7 +271,7 @@ private:
                 drawingShape_->setEnd(pos);
                 QRect bounds = drawingShape_->getBoundingRect();
                 if (bounds.width() > 5 && bounds.height() > 5) {
-                    drawing_.shapes().append(drawingShape_.release());
+                    drawing_.shapes().append(std::move(drawingShape_));
                 }
                 else {
                     drawingShape_.reset();
@@ -325,7 +325,6 @@ private:
 
         if (index < 0 || index >= shapes.size()) return;
 
-        delete shapes[index];
         shapes.removeAt(index);
 
         QVector<Connection> validConnections;

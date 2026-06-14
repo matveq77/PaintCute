@@ -1,20 +1,15 @@
 #include "Drawing.h"
 
-Drawing::~Drawing() {
-    clear();
-}
+Drawing::~Drawing() = default;
 
 void Drawing::clear() {
-    for (auto* shape : shapes_) {
-        delete shape;
-    }
     shapes_.clear();
     connections_.clear();
 }
 
 bool Drawing::serialize(QDataStream& out) const {
     out << static_cast<quint32>(shapes_.size());
-    for (const auto* shape : shapes_) {
+    for (const auto& shape : shapes_) {
         out << static_cast<int>(shape->getType());
         shape->serialize(out);
     }
@@ -28,7 +23,7 @@ bool Drawing::serialize(QDataStream& out) const {
 }
 
 bool Drawing::deserialize(QDataStream& in) {
-    QVector<Shape*> loadedShapes;
+    QVector<std::unique_ptr<Shape>> loadedShapes;
     QVector<Connection> loadedConnections;
 
     quint32 shapeCount;
@@ -40,11 +35,10 @@ bool Drawing::deserialize(QDataStream& in) {
         in >> typeInt;
         auto shape = Shape::createFromType(static_cast<Shape::Type>(typeInt));
         if (!shape) {
-            for (auto* s : loadedShapes) delete s;
             return false;
         }
         shape->deserialize(in);
-        loadedShapes.append(shape.release());
+        loadedShapes.append(std::move(shape));
     }
 
     quint32 connCount;
@@ -57,7 +51,6 @@ bool Drawing::deserialize(QDataStream& in) {
     }
 
     if (in.status() != QDataStream::Ok) {
-        for (auto* s : loadedShapes) delete s;
         return false;
     }
 

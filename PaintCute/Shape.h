@@ -20,12 +20,13 @@ public:
 
     virtual void draw(QPainter& painter) const = 0;
     virtual bool isPointInShape(const QPoint& p) const = 0;
-    virtual void move(const QPoint& delta) = 0;
+  
+    void move(const QPoint& delta);
 
-    virtual void serialize(QDataStream& out) const = 0;
-    virtual void deserialize(QDataStream& in) = 0;
+    void serialize(QDataStream& out) const;
+    void deserialize(QDataStream& in);
 
-    virtual QPoint getCenter() const = 0;
+    QPoint getCenter() const;
     virtual QRect getBoundingRect() const = 0;
 
     Type getType() const { return type_; }
@@ -41,5 +42,9 @@ protected:
     Type type_;
     QPoint start_;
     QPoint end_;
+    
+    QRect getNormalizedRect() const {
+        return QRect(start_, end_).normalized();
+    }
 };
 

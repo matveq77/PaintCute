@@ -11,35 +11,13 @@ Rectangle::Rectangle(const QPoint& start, const QPoint& end)
 }
 
 void Rectangle::draw(QPainter& painter) const {
-    QRect rect = getRect();
+    QRect rect = getNormalizedRect();
     painter.drawRect(rect);
 }
 
 bool Rectangle::isPointInShape(const QPoint& p) const {
-    return getRect().contains(p);
+    return getNormalizedRect().contains(p);
 }
-
-void Rectangle::move(const QPoint& delta) {
-    start_ += delta;
-    end_ += delta;
-}
-
-void Rectangle::serialize(QDataStream& out) const {
-    out << start_ << end_;
-}
-
-void Rectangle::deserialize(QDataStream& in) {
-    in >> start_ >> end_;
-}
-
-QPoint Rectangle::getCenter() const {
-    return getRect().center();
-}
-
 QRect Rectangle::getBoundingRect() const {
-    return getRect();
-}
-
-QRect Rectangle::getRect() const {
-    return QRect(start_, end_).normalized();
+    return getNormalizedRect();
 }

@@ -13,3 +13,20 @@ std::unique_ptr<Shape> Shape::createFromType(Type type) {
     default: return nullptr;
     }
 }
+
+void Shape::move(const QPoint& delta) {
+    start_ += delta;
+    end_ += delta;
+}
+
+void Shape::serialize(QDataStream& out) const {
+    out << start_ << end_;
+}
+
+void Shape::deserialize(QDataStream& in) {
+    in >> start_ >> end_;
+}
+
+QPoint Shape::getCenter() const {
+    return getBoundingRect().center();
+}

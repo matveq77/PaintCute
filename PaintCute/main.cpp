@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileDialog>
+#include <QMap>
 #include <QVector>
 #include <QDataStream>
 #include <QFile>
@@ -200,6 +201,15 @@ private:
     QPoint lastMousePos_;
     bool isDrawing_;
 
+    static Shape::Type modeToType(Mode mode) {
+        static const QMap<Mode, Shape::Type> modeMap = {
+            { Mode::DrawRectangle, Shape::Type::Rectangle },
+            { Mode::DrawEllipse,   Shape::Type::Ellipse },
+            { Mode::DrawTriangle,  Shape::Type::Triangle }
+        };
+        return modeMap.value(mode, Shape::Type::Rectangle);
+    }
+
     void handleLeftMousePress(const QPoint& pos) {
         lastMousePos_ = pos;
 
@@ -209,9 +219,7 @@ private:
         case Mode::DrawTriangle:
             if (!isDrawing_) {
                 startPoint_ = pos;
-                Shape::Type type = (mode_ == Mode::DrawRectangle) ? Shape::Type::Rectangle :
-                    (mode_ == Mode::DrawEllipse) ? Shape::Type::Ellipse :
-                    Shape::Type::Triangle;
+                Shape::Type type = modeToType(mode_);
                 drawingShape_ = Shape::createFromType(type);
                 drawingShape_->setStart(pos);
                 drawingShape_->setEnd(pos);

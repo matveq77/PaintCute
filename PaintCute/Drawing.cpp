@@ -23,11 +23,12 @@ bool Drawing::serialize(QDataStream& out) const {
 }
 
 bool Drawing::deserialize(QDataStream& in) {
-    QVector<std::unique_ptr<Shape>> loadedShapes;
-    QVector<Connection> loadedConnections;
+    std::vector<std::unique_ptr<Shape>> loadedShapes;
+    std::vector<Connection> loadedConnections;
 
     quint32 shapeCount;
     in >> shapeCount;
+
     loadedShapes.reserve(shapeCount);
 
     for (quint32 i = 0; i < shapeCount; ++i) {
@@ -38,7 +39,7 @@ bool Drawing::deserialize(QDataStream& in) {
             return false;
         }
         shape->deserialize(in);
-        loadedShapes.append(std::move(shape));
+        loadedShapes.push_back(std::move(shape));
     }
 
     quint32 connCount;
@@ -47,7 +48,7 @@ bool Drawing::deserialize(QDataStream& in) {
     for (quint32 i = 0; i < connCount; ++i) {
         Connection conn;
         conn.deserialize(in);
-        loadedConnections.append(conn);
+        loadedConnections.push_back(conn);
     }
 
     if (in.status() != QDataStream::Ok) {

@@ -6,9 +6,9 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileDialog>
-#include <QMap>
-#include <QVector>
+//#include <QMap>
 #include <QDataStream>
+#include <vector>
 #include <QFile>
 #include <QCursor>
 #include <QKeyEvent>
@@ -102,25 +102,31 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing);
         painter.fillRect(rect(), Qt::white);
 
-        auto& shapes = drawing_.shapes();
         auto& connections = drawing_.connections();
+        int shapeCount = drawing_.shapeCount();
 
-        for (int i = 0; i < shapes.size(); ++i) {
+        for (int i = 0; i < shapeCount; ++i) {
+            auto* s = drawing_.shapeAt(i);
+            if (!s) continue;
             if (mode_ == Mode::Move && i == selectedShapeIndex_) {
                 painter.setPen(QPen(Qt::blue, 2, Qt::DashLine));
             }
             else {
                 painter.setPen(QPen(Qt::black, 2));
             }
-            shapes[i]->draw(painter);
+            s->draw(painter);
         }
 
         painter.setPen(QPen(Qt::gray, 1.5));
         for (const auto& conn : connections) {
-            if (conn.getFromShapeId() >= 0 && conn.getFromShapeId() < shapes.size() &&
-                conn.getToShapeId() >= 0 && conn.getToShapeId() < shapes.size()) {
-                QPoint fromCenter = shapes[conn.getFromShapeId()]->getCenter();
-                QPoint toCenter = shapes[conn.getToShapeId()]->getCenter();
+            int fromId = conn.getFromShapeId();
+            int toId = conn.getToShapeId();
+            if (fromId >= 0 && fromId < shapeCount && toId >= 0 && toId < shapeCount) {
+                auto* fromShape = drawing_.shapeAt(fromId);
+                auto* toShape = drawing_.shapeAt(toId);
+                if (!fromShape || !toShape) continue;
+                QPoint fromCenter = fromShape->getCenter();
+                QPoint toCenter = toShape->getCenter();
                 conn.draw(painter, fromCenter, toCenter);
             }
         }
@@ -134,8 +140,10 @@ protected:
 
         if (mode_ == Mode::DrawConnection && connectionStartIndex_ >= 0 && isDrawing_) {
             painter.setPen(QPen(Qt::blue, 1, Qt::DashLine));
-            QPoint fromCenter = shapes[connectionStartIndex_]->getCenter();
-            painter.drawLine(fromCenter, lastMousePos_);
+            if (auto* fromShape = drawing_.shapeAt(connectionStartIndex_)) {
+                QPoint fromCenter = fromShape->getCenter();
+                painter.drawLine(fromCenter, lastMousePos_);
+            }
         }
     }
 
@@ -149,12 +157,10 @@ protected:
     }
 
     void mouseMoveEvent(QMouseEvent* event) override {
-        auto& shapes = drawing_.shapes();
-
         if (mode_ == Mode::Move && selectedShapeIndex_ >= 0 && (event->buttons() & Qt::LeftButton)) {
             setCursor(Qt::OpenHandCursor);
             QPoint delta = event->pos() - lastMousePos_;
-            shapes[selectedShapeIndex_]->move(delta);
+            if (auto* s = drawing_.shapeAt(selectedShapeIndex_)) s->move(delta);
             lastMousePos_ = event->pos();
             update();
         }
@@ -202,12 +208,12 @@ private:
     bool isDrawing_;
 
     static Shape::Type modeToType(Mode mode) {
-        static const QMap<Mode, Shape::Type> modeMap = {
-            { Mode::DrawRectangle, Shape::Type::Rectangle },
-            { Mode::DrawEllipse,   Shape::Type::Ellipse },
-            { Mode::DrawTriangle,  Shape::Type::Triangle }
-        };
-        return modeMap.value(mode, Shape::Type::Rectangle);
+        switch (mode) {
+        case Mode::DrawRectangle: return Shape::Type::Rectangle;
+        case Mode::DrawEllipse:   return Shape::Type::Ellipse;
+        case Mode::DrawTriangle:  return Shape::Type::Triangle;
+        default: return Shape::Type::Rectangle;
+        }
     }
 
     void handleLeftMousePress(const QPoint& pos) {
@@ -239,7 +245,7 @@ private:
             }
             else {
                 if (shapeIndex >= 0 && shapeIndex != connectionStartIndex_) {
-                    drawing_.connections().append(Connection(connectionStartIndex_, shapeIndex));
+                    drawing_.connections().push_back(Connection(connectionStartIndex_, shapeIndex));
                 }
                 connectionStartIndex_ = -1;
                 isDrawing_ = false;
@@ -279,7 +285,7 @@ private:
                 drawingShape_->setEnd(pos);
                 QRect bounds = drawingShape_->getBoundingRect();
                 if (bounds.width() > 5 && bounds.height() > 5) {
-                    drawing_.shapes().append(std::move(drawingShape_));
+                    drawing_.addShape(std::move(drawingShape_));
                 }
                 else {
                     drawingShape_.reset();
@@ -318,24 +324,24 @@ private:
     }
 
     int getShapeAtPoint(const QPoint& pos) {
-        auto& shapes = drawing_.shapes();
-        for (int i = shapes.size() - 1; i >= 0; --i) {
-            if (shapes[i]->isPointInShape(pos)) {
-                return i;
+        for (int i = drawing_.shapeCount() - 1; i >= 0; --i) {
+            if (auto* s = drawing_.shapeAt(i)) {
+                if (s->isPointInShape(pos)) {
+                    return i;
+                }
             }
         }
         return -1;
     }
 
     void deleteShape(int index) {
-        auto& shapes = drawing_.shapes();
         auto& connections = drawing_.connections();
 
-        if (index < 0 || index >= shapes.size()) return;
+        if (index < 0 || index >= drawing_.shapeCount()) return;
 
-        shapes.removeAt(index);
+        drawing_.removeShape(index);
 
-        QVector<Connection> validConnections;
+        std::vector<Connection> validConnections;
         for (const auto& conn : connections) {
             int from = conn.getFromShapeId();
             int to = conn.getToShapeId();
@@ -350,7 +356,7 @@ private:
             if (to > index) {
                 newConn.setToShapeId(to - 1);
             }
-            validConnections.append(newConn);
+            validConnections.push_back(newConn);
         }
         connections = validConnections;
 

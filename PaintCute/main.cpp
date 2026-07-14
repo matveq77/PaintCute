@@ -6,6 +6,9 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileDialog>
+#include <QDateTime>
+#include <QLabel>
+#include <QInputDialog>
 //#include <QMap>
 #include <QDataStream>
 #include <vector>
@@ -22,6 +25,7 @@
 #include "Triangle.h"
 #include "Connection.h"
 #include "DrawingSerializer.h"
+#include "DatabaseManager.h"
 
 class DrawingArea : public QWidget {
     Q_OBJECT
@@ -94,6 +98,14 @@ public:
         selectedShapeIndex_ = -1;
         update();
         QMessageBox::information(this, "Success", "Drawing loaded!", QMessageBox::Ok);
+    }
+
+    const Drawing& drawing() const { return drawing_; }
+    void setDrawing(Drawing drawing) {
+        drawing_ = std::move(drawing);
+        isDrawing_ = false;
+        selectedShapeIndex_ = -1;
+        update();
     }
 
 protected:
@@ -393,16 +405,30 @@ int main(int argc, char* argv[]) {
     QPushButton* btnSave = new QPushButton("Save");
     QPushButton* btnLoad = new QPushButton("Load");
     QPushButton* btnClear = new QPushButton("Clear All");
+    QPushButton* btnDbSave = new QPushButton("Save to DB");
+    QPushButton* btnDbLoad = new QPushButton("Load from DB");
+    QLabel* dbStatusLabel = new QLabel("DB: disconnected");
+
+    dbStatusLabel->setStyleSheet("color: #333; font-weight: bold; padding: 2px 6px;");
+    dbStatusLabel->setAlignment(Qt::AlignCenter);
 
     controlLayout->addWidget(btnSave);
     controlLayout->addWidget(btnLoad);
     controlLayout->addWidget(btnClear);
+    controlLayout->addWidget(btnDbSave);
+    controlLayout->addWidget(btnDbLoad);
+    controlLayout->addWidget(dbStatusLabel);
     controlLayout->addStretch();
 
     DrawingArea* drawingArea = new DrawingArea();
 
     mainLayout->addLayout(controlLayout);
     mainLayout->addWidget(drawingArea);
+
+    DatabaseManager* dbManager = new DatabaseManager(&window);
+    auto updateDbStatus = [&](bool connected) {
+        dbStatusLabel->setText(connected ? "DB: connected" : "DB: disconnected");
+    };
 
     QObject::connect(btnRectangle, &QPushButton::clicked,
         [drawingArea]() { drawingArea->setMode(DrawingArea::Mode::DrawRectangle); });
@@ -434,6 +460,56 @@ int main(int argc, char* argv[]) {
             drawingArea->loadFromFile(filename);
         }
         });
+
+    QObject::connect(btnDbConnect, &QPushButton::clicked, [&]() {
+        const QString host = "localhost";
+        const int port = 5432;
+        const QString database = "paintcute";
+        const QString user = "postgres";
+        const QString password = "postgres";
+
+        QString error;
+        if (!dbManager->open(host, port, database, user, password, error)) {
+            QMessageBox::warning(&window, "Database Error", "Unable to connect to PostgreSQL:\n" + error);
+            updateDbStatus(false);
+            return;
+        }
+        QMessageBox::information(&window, "Database", "Connected to PostgreSQL successfully.");
+        updateDbStatus(true);
+    });
+
+    QObject::connect(btnDbSave, &QPushButton::clicked, [&]() {
+        if (!dbManager->isOpen()) {
+            QMessageBox::warning(&window, "Database", "Please connect to the database first.");
+            return;
+        }
+
+        QString drawingName = QString("Drawing %1").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss"));
+
+        QString error;
+        if (!dbManager->saveDrawing(drawingName, drawingArea->drawing(), error)) {
+            QMessageBox::warning(&window, "Database", "Failed to save drawing:\n" + error);
+            return;
+        }
+        QMessageBox::information(&window, "Database", "Drawing saved to PostgreSQL as " + drawingName + ".");
+    });
+
+    QObject::connect(btnDbLoad, &QPushButton::clicked, [&]() {
+        if (!dbManager->isOpen()) {
+            QMessageBox::warning(&window, "Database", "Please connect to the database first.");
+            return;
+        }
+
+        QString error;
+        Drawing loaded;
+        if (!dbManager->loadLatestDrawing(loaded, error)) {
+            QMessageBox::warning(&window, "Database", "Failed to load drawing:\n" + error);
+            return;
+        }
+
+        drawingArea->setDrawing(std::move(loaded));
+        QMessageBox::information(&window, "Database", "Latest drawing loaded from PostgreSQL.");
+    });
 
     window.show();
     return app.exec();
